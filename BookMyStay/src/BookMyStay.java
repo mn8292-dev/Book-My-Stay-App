@@ -1,95 +1,88 @@
 import java.util.*;
 
 /**
- * UseCase10BookingCancellation - Version 10.0
- * Goal: Safe state reversal using Stack for rollback and Map for synchronization.
+ * UseCase11ConcurrentBookingSimulation - Version 11.0
+ * Goal: Ensure Thread Safety and prevent Race Conditions in a multi-user environment.
  */
 
-class Reservation {
-    String id;
-    String type;
-    String guest;
+class BookingProcessor extends Thread {
+    private String guestName;
+    private String roomType;
+    private InventoryManager inventoryManager;
 
-    public Reservation(String id, String type, String guest) {
-        this.id = id;
-        this.type = type;
-        this.guest = guest;
+    public BookingProcessor(String guestName, String roomType, InventoryManager manager) {
+        this.guestName = guestName;
+        this.roomType = roomType;
+        this.inventoryManager = manager;
     }
 
     @Override
-    public String toString() {
-        return "[" + id + "] " + guest + " (" + type + ")";
+    public void run() {
+        // Simulating network latency
+        try { Thread.sleep((long) (Math.random() * 100)); } catch (InterruptedException e) {}
+
+        inventoryManager.bookRoom(guestName, roomType);
     }
 }
 
-class CancellationService {
-    private Map<String, Integer> inventory;
-    private Map<String, Reservation> activeBookings;
-    // Stack tracks IDs for LIFO rollback (Last-In-First-Out undo)
-    private Stack<String> cancellationHistory;
+class InventoryManager {
+    private Map<String, Integer> inventory = new HashMap<>();
 
-    public CancellationService(Map<String, Integer> inventory, Map<String, Reservation> activeBookings) {
-        this.inventory = inventory;
-        this.activeBookings = activeBookings;
-        this.cancellationHistory = new Stack<>();
+    public void addRooms(String type, int count) {
+        inventory.put(type, count);
     }
 
-    public void cancelBooking(String bookingId) {
-        System.out.println("\nInitiating cancellation for ID: " + bookingId);
+    /**
+     * The 'synchronized' keyword creates a Critical Section.
+     * Only one thread can execute this method at a time for this instance.
+     */
+    public synchronized void bookRoom(String guest, String type) {
+        int available = inventory.getOrDefault(type, 0);
 
-        // 1. Validation: Ensure the reservation exists before rolling back
-        if (!activeBookings.containsKey(bookingId)) {
-            System.err.println("Error: Cancellation failed. Booking ID not found.");
-            return;
+        System.out.println("[Thread: " + Thread.currentThread().getName() + "] Checking for " + guest + "...");
+
+        if (available > 0) {
+            // Simulate processing time within the critical section
+            try { Thread.sleep(50); } catch (InterruptedException e) {}
+
+            inventory.put(type, available - 1);
+            System.out.println(">>> SUCCESS: Room confirmed for " + guest + ". Remaining " + type + ": " + (available - 1));
+        } else {
+            System.out.println(">>> FAILURE: Sold out! Could not book for " + guest);
         }
-
-        // 2. State Retrieval
-        Reservation res = activeBookings.get(bookingId);
-        String roomType = res.type;
-
-        // 3. Controlled Mutation: LIFO Rollback
-        activeBookings.remove(bookingId); // Remove from active records
-        inventory.put(roomType, inventory.get(roomType) + 1); // Restore inventory
-        cancellationHistory.push(bookingId); // Record the rollback action
-
-        System.out.println("SUCCESS: Inventory restored for " + roomType + ".");
-        System.out.println("Rollback Log: ID " + bookingId + " moved to cancellation stack.");
     }
 
-    public void displayState() {
-        System.out.println("\n--- Final System State ---");
-        System.out.println("Current Inventory: " + inventory);
-        System.out.println("Active Bookings  : " + activeBookings.values());
-        System.out.println("Recent Rollbacks : " + cancellationHistory);
-        System.out.println("--------------------------");
+    public void displayFinalState() {
+        System.out.println("\nFinal Inventory State: " + inventory);
     }
 }
 
 public class BookMyStay {
-    public static void main(String[] args) {
-        System.out.println("BookMyStay v10.0 - State Reversal & Rollback System");
+    public static void main(String[] args) throws InterruptedException {
+        System.out.println("--- BookMyStay v11.0: Concurrent Booking Simulation ---");
 
-        // Initialize System State
-        Map<String, Integer> inventory = new HashMap<>();
-        inventory.put("Suite", 0); // Currently sold out
-        inventory.put("Single", 5);
+        InventoryManager manager = new InventoryManager();
+        // Only 2 Luxury Suites available, but 5 guests will try to book at once!
+        manager.addRooms("Luxury Suite", 2);
 
-        Map<String, Reservation> activeBookings = new HashMap<>();
-        activeBookings.put("S-101", new Reservation("S-101", "Suite", "Alice"));
-        activeBookings.put("S-102", new Reservation("S-102", "Suite", "Bob"));
+        System.out.println("Initial Inventory: 2 Luxury Suites available.\n");
 
-        CancellationService service = new CancellationService(inventory, activeBookings);
+        // Simulating 5 concurrent guests
+        String[] guests = {"Alice", "Bob", "Charlie", "Diana", "Edward"};
+        List<Thread> threads = new ArrayList<>();
 
-        // Test Case 1: Valid Cancellation
-        service.cancelBooking("S-101");
+        for (String guest : guests) {
+            Thread t = new BookingProcessor(guest, "Luxury Suite", manager);
+            threads.add(t);
+            t.start();
+        }
 
-        // Test Case 2: Attempt to cancel a non-existent booking
-        service.cancelBooking("X-999");
+        // Wait for all threads to finish
+        for (Thread t : threads) {
+            t.join();
+        }
 
-        // Test Case 3: Cancel another valid booking
-        service.cancelBooking("S-102");
-
-        // Final Audit
-        service.displayState();
+        manager.displayFinalState();
+        System.out.println("\nConcurrency test complete. Thread safety maintained.");
     }
 }
