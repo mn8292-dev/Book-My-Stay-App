@@ -1,88 +1,96 @@
 import java.util.*;
+import java.util.concurrent.*;
 
 /**
- * UseCase11ConcurrentBookingSimulation - Version 11.0
- * Goal: Ensure Thread Safety and prevent Race Conditions in a multi-user environment.
+ * BookMyStay - Final Integrated Version
+ * Features: Multi-threading, Centralized Inventory, FIFO Queuing, and Unique Sets.
  */
 
-class BookingProcessor extends Thread {
-    private String guestName;
-    private String roomType;
-    private InventoryManager inventoryManager;
+// --- Domain Model ---
+abstract class Room {
+    private String type;
+    private double price;
 
-    public BookingProcessor(String guestName, String roomType, InventoryManager manager) {
-        this.guestName = guestName;
-        this.roomType = roomType;
-        this.inventoryManager = manager;
+    public Room(String type, double price) {
+        this.type = type;
+        this.price = price;
     }
 
-    @Override
-    public void run() {
-        // Simulating network latency
-        try { Thread.sleep((long) (Math.random() * 100)); } catch (InterruptedException e) {}
-
-        inventoryManager.bookRoom(guestName, roomType);
-    }
+    public String getType() { return type; }
+    public double getPrice() { return price; }
+    public abstract void showDescription();
 }
 
-class InventoryManager {
-    private Map<String, Integer> inventory = new HashMap<>();
-
-    public void addRooms(String type, int count) {
-        inventory.put(type, count);
-    }
-
-    /**
-     * The 'synchronized' keyword creates a Critical Section.
-     * Only one thread can execute this method at a time for this instance.
-     */
-    public synchronized void bookRoom(String guest, String type) {
-        int available = inventory.getOrDefault(type, 0);
-
-        System.out.println("[Thread: " + Thread.currentThread().getName() + "] Checking for " + guest + "...");
-
-        if (available > 0) {
-            // Simulate processing time within the critical section
-            try { Thread.sleep(50); } catch (InterruptedException e) {}
-
-            inventory.put(type, available - 1);
-            System.out.println(">>> SUCCESS: Room confirmed for " + guest + ". Remaining " + type + ": " + (available - 1));
-        } else {
-            System.out.println(">>> FAILURE: Sold out! Could not book for " + guest);
-        }
-    }
-
-    public void displayFinalState() {
-        System.out.println("\nFinal Inventory State: " + inventory);
-    }
+class SuiteRoom extends Room {
+    public SuiteRoom() { super("Suite", 350.0); }
+    @Override public void showDescription() { System.out.print("Luxury King Bed & Balcony"); }
 }
 
+// --- Core System Engine ---
 public class BookMyStay {
+    // 1. Centralized Inventory (Shared State)
+    private static final Map<String, Integer> inventory = new ConcurrentHashMap<>();
+
+    // 2. Allocation Tracking (Prevents Double-Booking)
+    private static final Map<String, Set<String>> allocatedRooms = new ConcurrentHashMap<>();
+
+    // 3. FIFO Request Queue (Fairness)
+    private static final Queue<String> requestQueue = new LinkedList<>();
+
     public static void main(String[] args) throws InterruptedException {
-        System.out.println("--- BookMyStay v11.0: Concurrent Booking Simulation ---");
+        System.out.println("========== WELCOME TO BOOKMYSTAY SYSTEM ==========");
 
-        InventoryManager manager = new InventoryManager();
-        // Only 2 Luxury Suites available, but 5 guests will try to book at once!
-        manager.addRooms("Luxury Suite", 2);
+        // Initialize Inventory
+        inventory.put("Suite", 2);
+        allocatedRooms.put("Suite", new HashSet<>());
 
-        System.out.println("Initial Inventory: 2 Luxury Suites available.\n");
-
-        // Simulating 5 concurrent guests
-        String[] guests = {"Alice", "Bob", "Charlie", "Diana", "Edward"};
-        List<Thread> threads = new ArrayList<>();
-
+        // Simulate incoming guest requests
+        String[] guests = {"Alice", "Bob", "Charlie", "Diana"};
         for (String guest : guests) {
-            Thread t = new BookingProcessor(guest, "Luxury Suite", manager);
-            threads.add(t);
+            requestQueue.add(guest);
+            System.out.println("QUEUE: Request received from " + guest);
+        }
+
+        System.out.println("\nStarting Thread-Safe Allocation Engine...\n");
+
+        // Process Queue using multiple threads (Simulating concurrent processing)
+        List<Thread> activeThreads = new ArrayList<>();
+        while (!requestQueue.isEmpty()) {
+            String currentGuest = requestQueue.poll();
+            Thread t = new Thread(() -> processBooking(currentGuest, "Suite"));
+            activeThreads.add(t);
             t.start();
         }
 
-        // Wait for all threads to finish
-        for (Thread t : threads) {
-            t.join();
-        }
+        // Ensure all threads finish before showing final report
+        for (Thread t : activeThreads) t.join();
 
-        manager.displayFinalState();
-        System.out.println("\nConcurrency test complete. Thread safety maintained.");
+        generateFinalReport();
     }
-}
+
+    /**
+     * Critical Section: Synchronized to ensure inventory consistency
+     * and unique room ID generation.
+     */
+    private static synchronized void processBooking(String guest, String roomType) {
+        int available = inventory.getOrDefault(roomType, 0);
+
+        if (available > 0) {
+            // Generate Unique Room ID
+            String roomID = roomType.toUpperCase() + "-" + (101 + allocatedRooms.get(roomType).size());
+
+            // Update State
+            allocatedRooms.get(roomType).add(roomID);
+            inventory.put(roomType, available - 1);
+
+            System.out.println("[CONFIRMED] " + guest + " assigned to " + roomID);
+        } else {
+            System.out.println("[REJECTED]  " + guest + " - No " + roomType + " rooms left.");
+        }
+    }
+
+    private static void generateFinalReport() {
+        System.out.println("\n--- ADMINISTRATIVE AUDIT REPORT ---");
+        System.out.println("Remaining Inventory: " + inventory);
+        System.out.println("Total Allocations:   " + allocatedRooms);
+        System
