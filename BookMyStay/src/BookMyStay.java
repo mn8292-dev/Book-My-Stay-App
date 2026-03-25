@@ -1,102 +1,101 @@
+import java.util.HashMap;
+import java.util.Map;
+
 /**
- * BookMyStay - Hotel Booking Management System (v2.0)
- * Focusing on Domain Modeling and Inheritance.
+ * UseCase3InventorySetup - Version 3.0
+ * Focus: Centralized Room Inventory Management using HashMap.
  */
 
-// --- Abstract Domain Layer ---
+// --- Domain Model (From Use Case 2) ---
 abstract class Room {
     private String roomType;
     private double pricePerNight;
-    private int capacity;
 
-    public Room(String roomType, double pricePerNight, int capacity) {
+    public Room(String roomType, double pricePerNight) {
         this.roomType = roomType;
         this.pricePerNight = pricePerNight;
-        this.capacity = capacity;
     }
 
-    // Abstract method to enforce specific behavior in subclasses
-    public abstract void displayAmenities();
-
-    // Getters for encapsulation
     public String getRoomType() { return roomType; }
     public double getPricePerNight() { return pricePerNight; }
-    public int getCapacity() { return capacity; }
+    public abstract void displayFeatures();
 }
 
-// --- Concrete Room Implementations ---
 class SingleRoom extends Room {
-    public SingleRoom() {
-        super("Single Room", 100.0, 1);
-    }
-
-    @Override
-    public void displayAmenities() {
-        System.out.println("Amenities: High-speed Wi-Fi, Single Bed, Workspace.");
-    }
+    public SingleRoom() { super("Single", 100.0); }
+    @Override public void displayFeatures() { System.out.print("Basic WiFi, Single Bed"); }
 }
 
 class DoubleRoom extends Room {
-    public DoubleRoom() {
-        super("Double Room", 150.0, 2);
-    }
-
-    @Override
-    public void displayAmenities() {
-        System.out.println("Amenities: Queen Size Bed, Mini-bar, City View.");
-    }
+    public DoubleRoom() { super("Double", 150.0); }
+    @Override public void displayFeatures() { System.out.print("Mini-bar, Queen Bed"); }
 }
 
 class SuiteRoom extends Room {
-    public SuiteRoom() {
-        super("Suite Room", 300.0, 4);
+    public SuiteRoom() { super("Suite", 300.0); }
+    @Override public void displayFeatures() { System.out.print("King Bed, Kitchenette"); }
+}
+
+// --- New Inventory Component (Use Case 3) ---
+class RoomInventory {
+    // Single Source of Truth: Mapping Room Type -> Available Count
+    private Map<String, Integer> inventory;
+
+    public RoomInventory() {
+        this.inventory = new HashMap<>();
     }
 
-    @Override
-    public void displayAmenities() {
-        System.out.println("Amenities: King Size Bed, Separate Living Area, Kitchenette.");
+    // Register/Initialize room types in the system
+    public void initializeRoomType(String type, int initialCount) {
+        inventory.put(type, initialCount);
+    }
+
+    // O(1) Lookup: Check availability
+    public int getAvailability(String type) {
+        return inventory.getOrDefault(type, 0);
+    }
+
+    // Controlled Update: Method to adjust stock (e.g., after a booking)
+    public void updateAvailability(String type, int change) {
+        if (inventory.containsKey(type)) {
+            int current = inventory.get(type);
+            inventory.put(type, current + change);
+        }
+    }
+
+    public void displayFullInventory() {
+        System.out.println("\n--- Current Inventory Status ---");
+        for (Map.Entry<String, Integer> entry : inventory.entrySet()) {
+            System.out.println("Room Type: " + entry.getKey() + " | Available: " + entry.getValue());
+        }
     }
 }
 
-// --- Main Application Class ---
-public class BookMyStay {
-
-    // Use Case 2 Requirement: Static Availability Representation
-    // These variables represent the "System State" separately from the "Domain Objects"
-    private static int singleRoomInventory = 10;
-    private static int doubleRoomInventory = 7;
-    private static int suiteRoomInventory = 3;
-
+// --- Main Application ---
+public class BookMyStay{
     public static void main(String[] args) {
-        printHeader();
+        System.out.println("Initializing BookMyStay v3.0 - Centralized Inventory...");
 
-        // 1. Instantiate Room Objects (Polymorphism)
-        Room sRoom = new SingleRoom();
-        Room dRoom = new DoubleRoom();
-        Room stRoom = new SuiteRoom();
+        // 1. Setup Inventory Manager
+        RoomInventory manager = new RoomInventory();
 
-        // 2. Display Room Details and Static Availability
-        printRoomStatus(sRoom, singleRoomInventory);
-        printRoomStatus(dRoom, doubleRoomInventory);
-        printRoomStatus(stRoom, suiteRoomInventory);
+        // 2. Register Rooms (Replacing scattered variables)
+        manager.initializeRoomType("Single", 10);
+        manager.initializeRoomType("Double", 7);
+        manager.initializeRoomType("Suite", 3);
 
-        System.out.println("\nApplication terminated successfully.");
-    }
+        // 3. Display Initial State
+        System.out.println("Initial Availability for Double: " + manager.getAvailability("Double"));
+        manager.displayFullInventory();
 
-    private static void printHeader() {
-        System.out.println("===========================================");
-        System.out.println("        WELCOME TO BOOKMYSTAY v2.0        ");
-        System.out.println("===========================================");
-        System.out.println("Current Catalog & Availability:");
-        System.out.println("-------------------------------------------");
-    }
+        // 4. Demonstrate Controlled Update (Simulating a booking)
+        System.out.println("\nAction: Booking 1 Double Room...");
+        manager.updateAvailability("Double", -1);
 
-    private static void printRoomStatus(Room room, int count) {
-        System.out.println("Type:     " + room.getRoomType());
-        System.out.println("Price:    $" + room.getPricePerNight() + " /night");
-        System.out.println("Capacity: " + room.getCapacity() + " Guest(s)");
-        room.displayAmenities();
-        System.out.println("IN STOCK: " + count);
-        System.out.println("-------------------------------------------");
+        // 5. Verify Consistency
+        System.out.println("Updated Availability for Double: " + manager.getAvailability("Double"));
+        manager.displayFullInventory();
+
+        System.out.println("\nInventory state maintained successfully.");
     }
 }
