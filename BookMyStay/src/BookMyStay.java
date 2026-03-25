@@ -1,90 +1,94 @@
 import java.util.*;
 
 /**
- * UseCase5BookingRequestQueue - Version 5.0
- * Goal: Implement a FIFO Queue to handle booking requests fairly.
+ * UseCase6RoomAllocationService - Version 6.0
+ * Goal: Safe room allocation using Set for uniqueness and FIFO processing.
  */
 
-// --- Domain Model: The Booking Request ---
+// --- Domain Model ---
 class ReservationRequest {
-    private String guestName;
-    private String roomType;
-    private int nights;
+    String guestName;
+    String roomType;
 
-    public ReservationRequest(String guestName, String roomType, int nights) {
+    public ReservationRequest(String guestName, String roomType) {
         this.guestName = guestName;
         this.roomType = roomType;
-        this.nights = nights;
-    }
-
-    @Override
-    public String toString() {
-        return String.format("Request[Guest: %-10s | Type: %-8s | Nights: %d]",
-                guestName, roomType, nights);
     }
 }
 
-// --- Request Management Component ---
-class BookingQueueManager {
-    // Queue follows FIFO: First-In, First-Out
-    private Queue<ReservationRequest> requestQueue;
+// --- Allocation & Inventory Service ---
+class BookingService {
+    // Inventory: Room Type -> Count
+    private Map<String, Integer> inventory = new HashMap<>();
 
-    public BookingQueueManager() {
-        this.requestQueue = new LinkedList<>();
+    // Allocations: Room Type -> Set of Unique Room IDs (Prevents Double-Booking)
+    private Map<String, Set<String>> allocatedRooms = new HashMap<>();
+
+    public void setupInventory(String type, int count) {
+        inventory.put(type, count);
+        allocatedRooms.put(type, new HashSet<>()); // Initialize empty set for each type
     }
 
-    // Add request to the back of the line
-    public void submitRequest(ReservationRequest request) {
-        requestQueue.add(request);
-        System.out.println("ADMITTED: " + request.toString());
-    }
+    public void processRequest(ReservationRequest request) {
+        String type = request.roomType;
+        int available = inventory.getOrDefault(type, 0);
 
-    // Check how many people are waiting
-    public int getQueueSize() {
-        return requestQueue.size();
-    }
+        System.out.println("\nProcessing: " + request.guestName + " for " + type);
 
-    // Display the current line without removing anyone
-    public void displayQueue() {
-        System.out.println("\n--- Current Booking Queue (Waiting for Processing) ---");
-        if (requestQueue.isEmpty()) {
-            System.out.println("The queue is currently empty.");
-        } else {
-            int position = 1;
-            for (ReservationRequest req : requestQueue) {
-                System.out.println(position + ". " + req);
-                position++;
+        if (available > 0) {
+            // 1. Generate a Unique Room ID (e.g., SINGLE-101)
+            String roomID = type.toUpperCase() + "-" + (100 + allocatedRooms.get(type).size() + 1);
+
+            // 2. Uniqueness Enforcement using Set
+            if (!allocatedRooms.get(type).contains(roomID)) {
+                allocatedRooms.get(type).add(roomID); // Add to Set
+
+                // 3. Inventory Synchronization (Atomic-like update)
+                inventory.put(type, available - 1);
+
+                System.out.println("CONFIRMED: Room " + roomID + " assigned to " + request.guestName);
+            } else {
+                System.out.println("ERROR: Room ID Collision detected!");
             }
+        } else {
+            System.out.println("REJECTED: No " + type + " rooms available for " + request.guestName);
         }
-        System.out.println("------------------------------------------------------");
     }
 
-    // Method to be used in the next Use Case for processing
-    public ReservationRequest nextInLine() {
-        return requestQueue.poll();
+    public void displayStatus() {
+        System.out.println("\n--- Final System State ---");
+        for (String type : inventory.keySet()) {
+            System.out.println(type + " -> Available: " + inventory.get(type) +
+                    " | Assigned IDs: " + allocatedRooms.get(type));
+        }
     }
 }
 
 // --- Main Application ---
 public class BookMyStay {
     public static void main(String[] args) {
-        System.out.println("BookMyStay v5.0 - Fair Request Intake System");
-        System.out.println("Initializing Booking Queue...\n");
+        System.out.println("BookMyStay v6.0 - Room Allocation & Set Uniqueness");
 
-        BookingQueueManager queueManager = new BookingQueueManager();
+        // 1. Initialize Services
+        BookingService bookingService = new BookingService();
+        bookingService.setupInventory("Single", 2); // Limited supply for testing
+        bookingService.setupInventory("Suite", 1);
 
-        // Simulating simultaneous requests arriving at the system
-        // These are added in a specific order to demonstrate FIFO
-        queueManager.submitRequest(new ReservationRequest("Alice", "Suite", 3));
-        queueManager.submitRequest(new ReservationRequest("Bob", "Single", 1));
-        queueManager.submitRequest(new ReservationRequest("Charlie", "Double", 2));
-        queueManager.submitRequest(new ReservationRequest("Diana", "Suite", 5));
+        // 2. Setup FIFO Request Queue (From Use Case 5)
+        Queue<ReservationRequest> requestQueue = new LinkedList<>();
+        requestQueue.add(new ReservationRequest("Alice", "Suite"));
+        requestQueue.add(new ReservationRequest("Bob", "Single"));
+        requestQueue.add(new ReservationRequest("Charlie", "Suite")); // Should be rejected (Sold out)
+        requestQueue.add(new ReservationRequest("Diana", "Single"));
 
-        // Display the state of the system
-        queueManager.displayQueue();
+        // 3. Process Queue in FIFO Order
+        System.out.println("Starting Allocation Engine...");
+        while (!requestQueue.isEmpty()) {
+            ReservationRequest nextRequest = requestQueue.poll();
+            bookingService.processRequest(nextRequest);
+        }
 
-        System.out.println("Total requests waiting: " + queueManager.getQueueSize());
-        System.out.println("\nStatus: Requests are safely queued. No inventory has been modified yet.");
-        System.out.println("Ready for Allocation Engine (Use Case 6).");
+        // 4. Final Audit
+        bookingService.displayStatus();
     }
 }
