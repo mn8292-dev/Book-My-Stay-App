@@ -1,94 +1,94 @@
 import java.util.*;
 
 /**
- * UseCase6RoomAllocationService - Version 6.0
- * Goal: Safe room allocation using Set for uniqueness and FIFO processing.
+ * UseCase7AddOnServiceSelection - Version 7.0
+ * Goal: Handle optional services using Map and List combination.
  */
 
-// --- Domain Model ---
-class ReservationRequest {
-    String guestName;
-    String roomType;
+// --- Domain Model: Add-On Services ---
+class AddOnService {
+    private String name;
+    private double price;
 
-    public ReservationRequest(String guestName, String roomType) {
-        this.guestName = guestName;
-        this.roomType = roomType;
+    public AddOnService(String name, double price) {
+        this.name = name;
+        this.price = price;
+    }
+
+    public String getName() { return name; }
+    public double getPrice() { return price; }
+
+    @Override
+    public String toString() {
+        return name + " ($" + price + ")";
     }
 }
 
-// --- Allocation & Inventory Service ---
-class BookingService {
-    // Inventory: Room Type -> Count
-    private Map<String, Integer> inventory = new HashMap<>();
+// --- Manager for Optional Features ---
+class AddOnManager {
+    // Map: ReservationID -> List of selected services
+    private Map<String, List<AddOnService>> selections = new HashMap<>();
 
-    // Allocations: Room Type -> Set of Unique Room IDs (Prevents Double-Booking)
-    private Map<String, Set<String>> allocatedRooms = new HashMap<>();
-
-    public void setupInventory(String type, int count) {
-        inventory.put(type, count);
-        allocatedRooms.put(type, new HashSet<>()); // Initialize empty set for each type
+    // Add a service to a specific reservation
+    public void addService(String reservationId, AddOnService service) {
+        // ComputeIfAbsent is a clean way to initialize the list if it doesn't exist
+        selections.computeIfAbsent(reservationId, k -> new ArrayList<>()).add(service);
+        System.out.println("Service Added: [" + service.getName() + "] to Reservation: " + reservationId);
     }
 
-    public void processRequest(ReservationRequest request) {
-        String type = request.roomType;
-        int available = inventory.getOrDefault(type, 0);
+    // Calculate total cost of all add-ons for a reservation
+    public double getTotalAddOnCost(String reservationId) {
+        List<AddOnService> services = selections.get(reservationId);
+        if (services == null) return 0.0;
 
-        System.out.println("\nProcessing: " + request.guestName + " for " + type);
-
-        if (available > 0) {
-            // 1. Generate a Unique Room ID (e.g., SINGLE-101)
-            String roomID = type.toUpperCase() + "-" + (100 + allocatedRooms.get(type).size() + 1);
-
-            // 2. Uniqueness Enforcement using Set
-            if (!allocatedRooms.get(type).contains(roomID)) {
-                allocatedRooms.get(type).add(roomID); // Add to Set
-
-                // 3. Inventory Synchronization (Atomic-like update)
-                inventory.put(type, available - 1);
-
-                System.out.println("CONFIRMED: Room " + roomID + " assigned to " + request.guestName);
-            } else {
-                System.out.println("ERROR: Room ID Collision detected!");
-            }
-        } else {
-            System.out.println("REJECTED: No " + type + " rooms available for " + request.guestName);
+        double total = 0;
+        for (AddOnService s : services) {
+            total += s.getPrice();
         }
+        return total;
     }
 
-    public void displayStatus() {
-        System.out.println("\n--- Final System State ---");
-        for (String type : inventory.keySet()) {
-            System.out.println(type + " -> Available: " + inventory.get(type) +
-                    " | Assigned IDs: " + allocatedRooms.get(type));
+    public void displayAddOns(String reservationId) {
+        List<AddOnService> services = selections.get(reservationId);
+        if (services != null && !services.isEmpty()) {
+            System.out.println("Selected Add-Ons for " + reservationId + ": " + services);
+            System.out.println("Total Add-On Cost: $" + getTotalAddOnCost(reservationId));
+        } else {
+            System.out.println("No add-ons selected for " + reservationId);
         }
     }
 }
 
 // --- Main Application ---
-public class BookMyStay {
+public class BookMyStay{
     public static void main(String[] args) {
-        System.out.println("BookMyStay v6.0 - Room Allocation & Set Uniqueness");
+        System.out.println("--- BookMyStay v7.0: Add-On Service Selection ---");
 
-        // 1. Initialize Services
-        BookingService bookingService = new BookingService();
-        bookingService.setupInventory("Single", 2); // Limited supply for testing
-        bookingService.setupInventory("Suite", 1);
+        // 1. Initialize Manager and available services
+        AddOnManager addOnManager = new AddOnManager();
+        AddOnService breakfast = new AddOnService("Buffet Breakfast", 25.0);
+        AddOnService spa = new AddOnService("Spa Treatment", 80.0);
+        AddOnService wifi = new AddOnService("Premium WiFi", 15.0);
 
-        // 2. Setup FIFO Request Queue (From Use Case 5)
-        Queue<ReservationRequest> requestQueue = new LinkedList<>();
-        requestQueue.add(new ReservationRequest("Alice", "Suite"));
-        requestQueue.add(new ReservationRequest("Bob", "Single"));
-        requestQueue.add(new ReservationRequest("Charlie", "Suite")); // Should be rejected (Sold out)
-        requestQueue.add(new ReservationRequest("Diana", "Single"));
+        // 2. Assume we have existing Reservation IDs from Use Case 6
+        String resAlice = "SUITE-101";
+        String resBob = "SINGLE-101";
 
-        // 3. Process Queue in FIFO Order
-        System.out.println("Starting Allocation Engine...");
-        while (!requestQueue.isEmpty()) {
-            ReservationRequest nextRequest = requestQueue.poll();
-            bookingService.processRequest(nextRequest);
-        }
+        System.out.println("\n--- Processing Guest Selections ---");
 
-        // 4. Final Audit
-        bookingService.displayStatus();
+        // Alice selects multiple services (One-to-Many)
+        addOnManager.addService(resAlice, breakfast);
+        addOnManager.addService(resAlice, spa);
+
+        // Bob selects one service
+        addOnManager.addService(resBob, wifi);
+
+        // 3. Display and Verify Costs
+        System.out.println("\n--- Final Billing Summary (Add-Ons Only) ---");
+        addOnManager.displayAddOns(resAlice);
+        System.out.println("-------------------------------------------");
+        addOnManager.displayAddOns(resBob);
+
+        System.out.println("\nCore booking state remains untouched. System extended successfully.");
     }
 }
